@@ -96,7 +96,7 @@ class PrisonersDilemmaGUI:
         """Start a simulation with the selected strategies."""
         print("Running simulation")
         rounds_per_game = 20
-        rounds_of_games = 10
+        rounds_of_games = 50
         selected_strategies = self.get_selected_strategies()
 
         if LearningPlayer in selected_strategies:
@@ -104,6 +104,7 @@ class PrisonersDilemmaGUI:
 
         for i in range(rounds_of_games):
             print("Starting simulation round " + str(i))
+            print("Amount of genomes: " + str(LearningPlayer.instances))
             game_combinations = self.get_game_combinations(selected_strategies, rounds_per_game, LearningPlayer.instances)
 
             results = PrisonersDilemmaSimulation(game_combinations).run()
@@ -112,6 +113,7 @@ class PrisonersDilemmaGUI:
 
             for result in results:
                 print(result)
+
         LearningPlayer.save_winner()
 
     def get_game_combinations(self, selected_strategies, rounds_per_game, amount_learningPlayers):
@@ -134,6 +136,10 @@ class PrisonersDilemmaGUI:
 
         # Create all possible combinations of strategies, with each pair playing a game
         combinations = itertools.combinations(extended_strategies, 2)
+
+        # Delete all combinations that dont have a learning player if there is one
+        if LearningPlayer in selected_strategies:
+            combinations = [comb for comb in combinations if any(isinstance(player, LearningPlayer) for player in comb)]
 
         # Create a list of all games to be played
         game_combinations = []
@@ -228,7 +234,7 @@ class PrisonersDilemmaGUI:
 
             # Input for number of players using this strategy
             if strategy_class.__name__ == "LearningPlayer":
-                player_count_var = tkinter.IntVar(value=100)
+                player_count_var = tkinter.IntVar(value=50)
                 entry = tk.Entry(frame, textvariable=player_count_var, width=5, state="disabled")
                 entry.pack(side="right", padx=5)
             else:
