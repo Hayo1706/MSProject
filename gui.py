@@ -95,15 +95,21 @@ class PrisonersDilemmaGUI:
     def run_simulation(self):
         """Start a simulation with the selected strategies."""
         print("Running simulation")
-        rounds = 25
+        rounds_per_game = 25
+        rounds_of_games = 20
         selected_strategies = self.get_selected_strategies()
-        permutations = itertools.permutations(selected_strategies.keys(), 2)
-        game_combinations = [GameSettings(strategy1(), strategy2(), rounds) for strategy1, strategy2 in permutations]
-        simulation = PrisonersDilemmaSimulation(game_combinations)
-        results = simulation.run()
-        for result in results:
-            print(result)
 
+        combinations = itertools.combinations_with_replacement(selected_strategies, 2)
+        game_combinations = [GameSettings(strategy1, strategy2, rounds_per_game) for strategy1, strategy2 in combinations]
+        simulation = PrisonersDilemmaSimulation(game_combinations)
+        for i in range(rounds_of_games):
+            results = simulation.run()
+            for player in selected_strategies:
+                player.reset_history()
+                if isinstance(player, LearningPlayer):
+                    player.reset_rounds()
+            for result in results:
+                print(result)
 
 
     def run_game(self):
@@ -212,7 +218,7 @@ class PrisonersDilemmaGUI:
             if strategy_var.get():  # Check if the strategy is selected
                 count = player_count_var.get()
                 if count > 0:
-                    selected_strategies[strategy_class] = count
+                    selected_strategies[strategy_class()] = count
 
         return selected_strategies
 

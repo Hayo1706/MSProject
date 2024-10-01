@@ -2,7 +2,7 @@ import multiprocessing
 import sys
 from typing import List
 
-from player import Player, HumanPlayer
+from player import Player, HumanPlayer, LearningPlayer
 
 
 class GameSettings:
@@ -60,6 +60,10 @@ class Logic:
                 self.q.put([self.history, self.scores])
         if self.q is not None:
             self.q.put(None)
+        if isinstance(self.player2,LearningPlayer):
+            self.player2.add_score(self.scores[self.player2.name])
+        if isinstance(self.player1,LearningPlayer):
+            self.player1.add_score(self.scores[self.player1.name])
         return self.scores
 
     def update_scores(self, move1, move2):
