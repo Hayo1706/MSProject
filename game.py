@@ -21,7 +21,6 @@ class PrisonersDilemmaSimulation:
         return logic.loop()
 
     def run(self, q=None):
-        print("Starting simulation")
         total_games = len(self.game_list)
         pool_size = multiprocessing.cpu_count() * 2
         if total_games < pool_size:
@@ -40,7 +39,7 @@ class Logic:
         self.player1 = game_settings.player1
         self.player2 = game_settings.player2
         self.rounds = game_settings.rounds
-        self.scores = {self.player1.name: 0, self.player2.name: 0}
+        self.scores = {self.player1.name + "'": 0, self.player2.name: 0}
 
         self.q = q
 
@@ -58,12 +57,14 @@ class Logic:
             self.update_scores(move1, move2)
             if self.q is not None:
                 self.q.put([self.history, self.scores])
+
         if self.q is not None:
             self.q.put(None)
+
         if isinstance(self.player2,LearningPlayer):
             self.player2.add_score(self.scores[self.player2.name])
         if isinstance(self.player1,LearningPlayer):
-            self.player1.add_score(self.scores[self.player1.name])
+            self.player1.add_score(self.scores[self.player1.name + "'"])
         return self.scores
 
     def update_scores(self, move1, move2):
@@ -74,7 +75,7 @@ class Logic:
             ("D", "D"): (1, 1),
         }
         score1, score2 = payoff_matrix[(move1, move2)]
-        self.scores[self.player1.name] += score1
+        self.scores[self.player1.name + "'"] += score1
         self.scores[self.player2.name] += score2
 
         return self.scores

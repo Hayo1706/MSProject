@@ -1,3 +1,4 @@
+import pickle
 import random
 import neat
 import os
@@ -76,49 +77,126 @@ class HumanPlayer(Player):
 
 
 class LearningPlayer(Player):
-    def __init__(self):
+    # Create the population
+    population = None
+    genomes = None
+    scores = {}
+    last_winner = None
+    simulation_round = 0
+    instances = 0
+
+    # Load the NEAT config file
+    local_dir = os.path.dirname(__file__)
+    config_path = os.path.join(local_dir, 'config-rnn')
+    config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                         neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                         config_path)
+
+    @classmethod
+    def initialize_population(cls):
+        if cls.population is None:
+            cls.population = neat.Population(cls.config)
+            cls.population.run(cls.evaluate_genomes, 1)
+            # Return the amount of genomes in the population
+            cls.instances = len(cls.genomes)
+
+    def __init__(self, index):
         super().__init__("Learning Player")
-        # Load the NEAT config file
-        local_dir = os.path.dirname(__file__)
-        config_path = os.path.join(local_dir, 'config-rnn')
-        self.config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                                  neat.DefaultSpeciesSet, neat.DefaultStagnation,
-                                  config_path)
-        # Create the population
-        self.population = neat.Population(self.config)
-        self.current_genome = None
-        self.genome_index = 0
-        self.genomes = None
-        self.score = 0
-        winner = self.population.run(self.evaluate_genomes, 1)  # Run for one generation
-
-        self.net = neat.nn.RecurrentNetwork.create(winner, self.config)
-
-    def evaluate_genomes(self, genomes, config):
-        self.genomes = genomes
-        # Initialize fitness for all genomes
-        for genome_id, genome in genomes:
-            genome.fitness = self.score
+        self.genome_index, self.current_genome = self.genomes[index]
+        self.net = neat.nn.RecurrentNetwork.create(self.current_genome, self.config)
 
     def make_move(self):
         # Use the last two moves as input for the RNN (modify if necessary)
-        if len(self.opponentHistory) > 1:
-            inputs = [self.opponentHistory[0], self.ownHistory[0]]
-        else:
-            inputs = [0, 0]
-
-        inputs = [1 if move == "D" else 0 for move in inputs]
+        input = create_input(self.opponentHistory, self.ownHistory)
 
         # Get the output from the neural network
-        output = self.net.activate(inputs)[0]
+        output = self.net.activate(input)
         # Decide to cooperate or defect
-        move = 'C' if output > 0.5 else 'D'
+        move = 'C' if output[0] > output[1] else 'D'
         return move
 
-    def reset_rounds(self):
-        winner = self.net.run(self.evaluate_genomes, 1)
-        self.net = neat.nn.FeedForwardNetwork.create(winner, self.config)
-        self.score = 0
-
     def add_score(self, score):
-        self.score = self.score + score
+        # Check if key exists in scores and add score
+        if self.genome_index in LearningPlayer.scores:
+            LearningPlayer.scores[self.genome_index] += score
+        else:
+            LearningPlayer.scores[self.genome_index] = score
+
+    @classmethod
+    def evaluate_genomes(cls, genomes, config):
+        # Initialize fitness for all genomes
+        for genome_id, genome in genomes:
+            if cls.genomes is None:
+                genome.fitness = cls.scores.get(genome_id, 0)
+            else:
+                genome.fitness = cls.scores.get(genome_id, random.randint(0, 10))
+        cls.genomes = genomes
+
+    @classmethod
+    def reset_rounds(cls, amount_of_games):
+        # Divide all scores by the amount of games played to get the average score
+        # Consideration: Maybe average is not a right approach
+        for key in LearningPlayer.scores:
+            cls.scores[key] /= amount_of_games
+
+        # Save the winner genome and run evolution for the next generation
+        cls.last_winner = cls.population.run(cls.evaluate_genomes, 1)
+
+        # Reset the scores and increase the simulation round
+        cls.scores = {}
+        cls.simulation_round += 1
+        cls.instances = len(cls.genomes)
+
+    @classmethod
+    def get_population_size(cls):
+        return cls.genomes.__len__()
+
+    @classmethod
+    def save_winner(cls):
+        with open("WinnerGenome", 'wb') as f:
+            # Save the genome and neural network state
+            pickle.dump(cls.last_winner, f)
+        print(f"Network winner saved")
+
+
+class LastWinner(Player):
+    def __init__(self):
+
+        super().__init__("Last Winner")
+        # Load the winner genome from the file and create a neural network
+        with open("WinnerGenome", 'rb') as f:
+            self.genome = pickle.load(f)
+
+        # Load the NEAT config file
+        local_dir = os.path.dirname(__file__)
+        config_path = os.path.join(local_dir, 'config-rnn')
+        config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
+                             neat.DefaultSpeciesSet, neat.DefaultStagnation,
+                             config_path)
+
+        self.net = neat.nn.RecurrentNetwork.create(self.genome, config)
+
+    def make_move(self):
+        # Use the last two moves as input for the RNN (modify if necessary)
+        input = create_input(self.opponentHistory, self.ownHistory)
+
+        # Get the output from the neural network
+        output = self.net.activate(input)
+        # Decide to cooperate or defect
+        move = 'C' if output[0] > output[1] else 'D'
+        return move
+
+
+def create_input(list1, list2):
+    # Get the last 4 elements of each list, padded with 0s
+    last_four_list1 = (list1[-4:] + [0]*4)[:4]  # Last 4 elements or padded with 0
+    last_four_list2 = (list2[-4:] + [0]*4)[:4]  # Last 4 elements or padded with 0
+
+    # Combine them in alternating order
+    result = []
+    for a, b in zip(last_four_list1, last_four_list2):
+        result.append(a)
+        result.append(b)
+
+    return [1 if move == "D" else 0 for move in result]
+

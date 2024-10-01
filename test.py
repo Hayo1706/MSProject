@@ -1,18 +1,17 @@
-import itertools
-from player import *
-import itertools
+def alternate_last_four(list1, list2):
+    # Get the last 4 elements of each list, padded with 0s
+    last_four_list1 = (list1[-4:] + [0]*4)[:4]  # Last 4 elements or padded with 0
+    last_four_list2 = (list2[-4:] + [0]*4)[:4]  # Last 4 elements or padded with 0
 
-# Create instances of the class
-instance1 = AlwaysDefect()
-instance2 = AlwaysCooperate()
-instance3 = LearningPlayer()
+    # Combine them in alternating order
+    result = []
+    for a, b in zip(last_four_list1, last_four_list2):
+        result.append(a)
+        result.append(b)
 
-# Put the instances into a list
-instances = [instance1, instance2, instance3]
+    return result
 
-# Generate combinations with replacement
-combinations = list(itertools.combinations_with_replacement(instances, 2))
+list1 = [1, 2, 3]
+list2 = [11, 12, 13]
 
-# Print the combinations
-for combo in combinations:
-    print(combo)
+print(alternate_last_four(list1, list2))  # Output: [5, 15, 6, 16, 7, 17, 8, 18]

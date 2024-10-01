@@ -95,22 +95,52 @@ class PrisonersDilemmaGUI:
     def run_simulation(self):
         """Start a simulation with the selected strategies."""
         print("Running simulation")
-        rounds_per_game = 25
-        rounds_of_games = 20
+        rounds_per_game = 20
+        rounds_of_games = 10
         selected_strategies = self.get_selected_strategies()
 
-        combinations = itertools.combinations_with_replacement(selected_strategies, 2)
-        game_combinations = [GameSettings(strategy1, strategy2, rounds_per_game) for strategy1, strategy2 in combinations]
-        simulation = PrisonersDilemmaSimulation(game_combinations)
+        if LearningPlayer in selected_strategies:
+            LearningPlayer.initialize_population()
+
         for i in range(rounds_of_games):
-            results = simulation.run()
-            for player in selected_strategies:
-                player.reset_history()
-                if isinstance(player, LearningPlayer):
-                    player.reset_rounds()
+            print("Starting simulation round " + str(i))
+            game_combinations = self.get_game_combinations(selected_strategies, rounds_per_game, LearningPlayer.instances)
+
+            results = PrisonersDilemmaSimulation(game_combinations).run()
+            if LearningPlayer in selected_strategies:
+                LearningPlayer.reset_rounds(len(game_combinations))
+
             for result in results:
                 print(result)
+        LearningPlayer.save_winner()
 
+    def get_game_combinations(self, selected_strategies, rounds_per_game, amount_learningPlayers):
+        if LearningPlayer in selected_strategies.keys():
+            selected_strategies[LearningPlayer] = amount_learningPlayers
+
+        # Extend the strategies occurrence based on the count
+        extended_strategies = []
+        for strategy, count in selected_strategies.items():
+            extended_strategies.extend([strategy] * count)
+
+        index = 0
+        # Instantiate the Player Classes
+        for i, strategy in enumerate(extended_strategies):
+            if strategy == LearningPlayer:
+                extended_strategies[i] = strategy(index)
+                index += 1
+            else:
+                extended_strategies[i] = strategy()
+
+        # Create all possible combinations of strategies, with each pair playing a game
+        combinations = itertools.combinations(extended_strategies, 2)
+
+        # Create a list of all games to be played
+        game_combinations = []
+        for strategy1, strategy2 in combinations:
+            game_combinations.append(GameSettings(strategy1, strategy2, rounds_per_game))
+
+        return game_combinations
 
     def run_game(self):
         """Start a manual game between the human and the selected AI."""
@@ -133,7 +163,6 @@ class PrisonersDilemmaGUI:
 
         self.table = ColorTable(self.right_frame, 2, rounds, input_q)
 
-
         # Start the game
         game = PrisonersDilemmaSimulation([game_settings])
         listener_thread = threading.Thread(target=self.update_game_status, args=(update_q,))
@@ -155,7 +184,6 @@ class PrisonersDilemmaGUI:
             last_state = state
 
         self.show_game_results(last_state[1])
-
 
     def show_game_results(self, scores):
         """Display game results."""
@@ -199,9 +227,14 @@ class PrisonersDilemmaGUI:
             checkbox.pack(side="left", padx=(5, 10))
 
             # Input for number of players using this strategy
-            player_count_var = tkinter.IntVar(value=1)
-            entry = tk.Entry(frame, textvariable=player_count_var, width=5)
-            entry.pack(side="right", padx=5)
+            if strategy_class.__name__ == "LearningPlayer":
+                player_count_var = tkinter.IntVar(value=100)
+                entry = tk.Entry(frame, textvariable=player_count_var, width=5, state="disabled")
+                entry.pack(side="right", padx=5)
+            else:
+                player_count_var = tkinter.IntVar(value=1)
+                entry = tk.Entry(frame, textvariable=player_count_var, width=5)
+                entry.pack(side="right", padx=5)
 
             # Store strategy info (checkbox and input)
             self.simulation_checkboxes.append((strategy_class, strategy_var, player_count_var))
@@ -218,7 +251,7 @@ class PrisonersDilemmaGUI:
             if strategy_var.get():  # Check if the strategy is selected
                 count = player_count_var.get()
                 if count > 0:
-                    selected_strategies[strategy_class()] = count
+                    selected_strategies[strategy_class] = count
 
         return selected_strategies
 
@@ -261,7 +294,8 @@ class ColorTable:
             row_frame.pack()
             row_cells = []
             for col in range(cols):
-                label = tkinter.Label(row_frame, width=min(square_width,6), height=3, bg="white", borderwidth=1, relief="solid")
+                label = tkinter.Label(row_frame, width=min(square_width, 6), height=3, bg="white", borderwidth=1,
+                                      relief="solid")
                 label.pack(side="left", padx=1, pady=1)
                 row_cells.append(label)
             self.cells.append(row_cells)
