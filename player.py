@@ -4,23 +4,31 @@ import neat
 import os
 import multiprocessing
 
+import numpy as np
+
 
 class Player:
     def __init__(self, name):
         self.name = name
         self.ownHistory = []
         self.opponentHistory = []
+        self.ownScore = 0
+        self.opponentScore = 0
 
     def make_move(self):
         pass
 
-    def update_history(self, own_move, opponent_move):
+    def update_history(self, own_move, opponent_move, own_score, opponent_score):
+        self.ownScore += own_score
+        self.opponentScore += opponent_score
         self.ownHistory.append(own_move)
         self.opponentHistory.append(opponent_move)
 
     def reset_history(self):
         self.opponentHistory = []
         self.ownHistory = []
+        self.ownScore = 0
+        self.opponentScore = 0
 
 
 class AlwaysCooperate(Player):
@@ -107,7 +115,7 @@ class LearningPlayer(Player):
 
     def make_move(self):
         # Use the last two moves as input for the RNN (modify if necessary)
-        input = create_input(self.opponentHistory, self.ownHistory)
+        input = create_input(self.opponentHistory, self.ownHistory, self.ownScore, self.opponentScore)
 
         # Get the output from the neural network
         output = self.net.activate(input)
@@ -174,29 +182,33 @@ class LastWinner(Player):
                              neat.DefaultSpeciesSet, neat.DefaultStagnation,
                              config_path)
 
-        self.net = neat.nn.RecurrentNetwork.create(self.genome, config)
+        self.net = neat.nn.recurrent.RecurrentNetwork.create(self.genome, config)
 
     def make_move(self):
         # Use the last two moves as input for the RNN (modify if necessary)
-        input = create_input(self.opponentHistory, self.ownHistory)
+        input = create_input(self.opponentHistory, self.ownHistory, self.ownScore, self.opponentScore)
 
         # Get the output from the neural network
         output = self.net.activate(input)
         # Decide to cooperate or defect
-        move = 'C' if output[0] > output[1] else 'D'
+        move = 'C' if output[0] < 0.5 else 'D'
         return move
 
 
-def create_input(list1, list2):
-    # Get the last 4 elements of each list, padded with 0s
-    last_four_list1 = (list1[-4:] + [0]*4)[:4]  # Last 4 elements or padded with 0
-    last_four_list2 = (list2[-4:] + [0]*4)[:4]  # Last 4 elements or padded with 0
+def create_input(oppHistory, ownHistory, own_score, opponent_score):
 
-    # Combine them in alternating order
-    result = []
-    for a, b in zip(last_four_list1, last_four_list2):
-        result.append(a)
-        result.append(b)
+    input = [0] * 40
 
-    return [1 if move == "D" else 0 for move in result]
+    for idx, (opp, own) in enumerate(zip(oppHistory, ownHistory)):
+        if own == "C":
+            input[idx * 2] = 1
+        else:
+            input[idx * 2] = -1
+
+        if opp == "C":
+            input[idx * 2 + 1] = 1
+        else:
+            input[idx * 2 + 1] = -1
+
+    return input
 

@@ -111,7 +111,7 @@ class PrisonersDilemmaGUI:
             if LearningPlayer in selected_strategies:
                 LearningPlayer.reset_rounds(len(game_combinations))
 
-            for result in results:
+            for result in results[:10]:
                 print(result)
 
         LearningPlayer.save_winner()
@@ -151,7 +151,7 @@ class PrisonersDilemmaGUI:
     def run_game(self):
         """Start a manual game between the human and the selected AI."""
         print("Running game")
-        rounds = 25
+        rounds = 20
 
         strategy_name = self.strategy_var.get()
 

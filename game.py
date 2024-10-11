@@ -51,8 +51,8 @@ class Logic:
             self.history[0].append(move1)
             self.history[1].append(move2)
 
-            self.player1.update_history(move1, move2)
-            self.player2.update_history(move2, move1)
+            self.player1.update_history(move1, move2, self.scores[self.player1.name + "'"], self.scores[self.player2.name])
+            self.player2.update_history(move2, move1, self.scores[self.player2.name], self.scores[self.player1.name + "'"])
 
             self.update_scores(move1, move2)
             if self.q is not None:
