@@ -2,7 +2,7 @@ import pickle
 from collections import defaultdict
 import neat
 import os
-import multiprocessing as mp
+import multiprocessing as np
 import matplotlib.pyplot as plt
 
 
@@ -15,31 +15,32 @@ class Strategy:
         pass
 
 
-class TitForTat(Strategy):
-    def make_move(self, ownHistory, oppHistory):
-        if len(oppHistory) == 0:
-            return "C"
-        return oppHistory[-1]
+#
+# class TitForTat(Strategy):
+#     def make_move(self, ownHistory, oppHistory):
+#         if len(oppHistory) == 0:
+#             return "C"
+#         return oppHistory[-1]
 
 
 class AlwaysDefect(Strategy):
     def make_move(self, ownHistory, oppHistory):
-        return "D"
+        return -1
 
 
-class CooperateUntilThreeDefections(Strategy):
-    def make_move(self, ownHistory, oppHistory):
-        # Cooperate if no previous history
-        if len(oppHistory) < 3:
-            return "C"
-
-        # Check if the opponent has defected three times in a row at any point
-        for i in range(len(oppHistory) - 2):
-            if oppHistory[i:i + 3] == ["D", "D", "D"]:
-                return "D"
-
-        # Otherwise, continue cooperating
-        return "C"
+# class CooperateUntilThreeDefections(Strategy):
+#     def make_move(self, ownHistory, oppHistory):
+#         # Cooperate if no previous history
+#         if len(oppHistory) < 3:
+#             return "C"
+#
+#         # Check if the opponent has defected three times in a row at any point
+#         for i in range(len(oppHistory) - 2):
+#             if oppHistory[i:i + 3] == ["D", "D", "D"]:
+#                 return "D"
+#
+#         # Otherwise, continue cooperating
+#         return "C"
 
 
 class Genome(Strategy):
@@ -49,22 +50,8 @@ class Genome(Strategy):
         self.config = config
         self.genome = genome
 
-    def make_move(self, ownHistory, oppHistory):
-        input = [0] * 40
-
-        for idx, (opp, own) in enumerate(zip(oppHistory, ownHistory)):
-            if own == "C":
-                input[idx * 2] = 1
-            else:
-                input[idx * 2] = -1
-
-            if opp == "C":
-                input[idx * 2 + 1] = 1
-            else:
-                input[idx * 2 + 1] = -1
-
-        move = self.net.activate(input)
-        return "C" if move[0] < 0.5 else "D"
+    def make_move(self, input1, oppHistory):
+        return 1 if self.net.activate(input1)[0] < 0.5 else -1
 
 
 class GameStats:
@@ -123,43 +110,46 @@ class PopulationStats:
 
 def play_game(genome1: Strategy, genome2: Strategy, num_rounds=20):
     score1, score2 = 0, 0
-    play1_history = []
-    play2_history = []
+    input1, input2 = [0] * 40, [0] * 40
+
     game_stats = GameStats()
 
     # Simulate a series of rounds in the game
     for ind in range(num_rounds):
         # Decide the moves
-        move1 = genome1.make_move(play1_history, play2_history)
-        move2 = genome2.make_move(play2_history, play1_history)
+        move1 = genome1.make_move(input1, input2)
+        move2 = genome2.make_move(input2, input1)
 
         if ind == 0:
-            if move1 == "C":
+            if move1 == 1:
                 game_stats.amount_start_cooperate += 1
             else:
                 game_stats.amount_start_defect += 1
 
-            if move2 == "C":
+            if move2 == 1:
                 game_stats.amount_start_cooperate += 1
             else:
                 game_stats.amount_start_defect += 1
 
-        if move1 == "C" and move2 == "C":
+        if move1 == 1 and move2 == 1:
             game_stats.amount_both_cooperate += 1
-        elif move1 == "D" and move2 == "D":
+        elif move1 == -1 and move2 == -1:
             game_stats.amount_both_defect += 1
         else:
             game_stats.amount_one_cooperate += 1
 
-        if not len(play1_history) == 0 and play1_history[-1] == "D" and play2_history[-1] == "D":
+        if not ind == 0 and input1[ind * 2 - 1] == -1 and input2[ind * 2 - 2] == -1:
             # calculate forgiveness, can only be done if there is a previous round
-            if move1 == "C":
+            if move1 == 1:
                 game_stats.amount_forgiveness += 1
-            if move2 == "C":
+            if move2 == 1:
                 game_stats.amount_forgiveness += 1
 
-        play1_history.append(move1)
-        play2_history.append(move2)
+        input1[ind * 2] = move1
+        input1[ind * 2 + 1] = move2
+
+        input2[ind * 2] = move2
+        input2[ind * 2 + 1] = move1
 
         # Update scores based on moves
         round_score1, round_score2 = REWARD_MATRIX[(move1, move2)]
@@ -172,10 +162,10 @@ def play_game(genome1: Strategy, genome2: Strategy, num_rounds=20):
 generation = 0
 # Define the reward system for the Prisoner's Dilemma
 REWARD_MATRIX = {
-    ("C", "C"): (3, 3),
-    ("C", "D"): (0, 5),
-    ("D", "C"): (5, 0),
-    ("D", "D"): (1, 1)
+    (1, 1): (3, 3),
+    (1, -1): (0, 5),
+    (-1, 1): (5, 0),
+    (-1, -1): (1, 1)
 }
 
 subset_size = 20
@@ -239,8 +229,7 @@ def create_genome_pairs_predefined_strategies(genomes):
         #     genome_pairs.append((
         #         Genome(genome1, config), CooperateUntilThreeDefections()))
         for i in range(30):
-            genome_pairs.append((
-                Genome(genome1, config), AlwaysDefect()))
+            genome_pairs.append((Genome(genome1, config), AlwaysDefect()))
 
     return genome_pairs
 
@@ -304,8 +293,8 @@ if __name__ == '__main__':
     stats = neat.StatisticsReporter()
     population.add_reporter(stats)
 
-    pool = mp.Pool(mp.cpu_count())
-    winner = population.run(evaluate_genomes, 10)
+    pool = np.Pool(np.cpu_count())
+    winner = population.run(evaluate_genomes, 100)
 
     statistics.compute_averages()
 
