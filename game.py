@@ -6,13 +6,13 @@ from player import Player, HumanPlayer
 
 
 class GameSettings:
-    def __init__(self, player1: Player, player2: Player, rounds=10):
+    def __init__(self, player1: Player, player2: Player, rounds=20):
         self.player1 = player1
         self.player2 = player2
         self.rounds = rounds
 
 
-class PrisonersDilemmaSimulation:
+class PrisonersDilemma:
     def __init__(self, game_list: List[GameSettings]):
         self.game_list = game_list
 

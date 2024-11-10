@@ -1,4 +1,5 @@
 import pickle
+import random
 from collections import defaultdict
 import neat
 import os
@@ -19,6 +20,18 @@ class Strategy:
 class AlwaysDefect(Strategy):
     def make_move(self, ownHistory, oppHistory):
         return "D"
+
+
+class TitForTat(Strategy):
+    def make_move(self, ownHistory, oppHistory):
+        if len(oppHistory) == 0:
+            return "C"
+        return oppHistory[-1]
+
+
+class Random(Strategy):
+    def make_move(self, ownHistory, oppHistory):
+        return random.choice(["D", "C"])
 
 
 class Genome(Strategy):
@@ -71,6 +84,8 @@ class PopulationStats:
 
         self.amount_of_games_per_generation = defaultdict(int)
 
+        self.average_fitness_per_generation = defaultdict(int)
+
     def add_stats(self, generation, stats: GameStats):
         self.amount_both_cooperate_per_generation[generation] += stats.amount_both_cooperate
         self.amount_one_cooperate_per_generation[generation] += stats.amount_one_cooperate
@@ -86,15 +101,18 @@ class PopulationStats:
     def add_average_complexity(self, generation, complexity):
         self.average_complexity_per_generation[generation] = complexity
 
+    def add_average_fitness(self, generation, fitness):
+        self.average_fitness_per_generation[generation] = fitness
+
     def compute_averages(self):
         for generation in self.amount_of_games_per_generation.keys():
             self.amount_both_cooperate_per_generation[generation] /= (
-                        (self.amount_of_games_per_generation[generation] * num_rounds) / 100)
+                    (self.amount_of_games_per_generation[generation] * num_rounds) / 100)
             self.amount_one_cooperate_per_generation[generation] /= self.amount_of_games_per_generation[generation]
             self.amount_both_defect_per_generation[generation] /= self.amount_of_games_per_generation[generation]
 
             self.amount_start_cooperate_per_generation[generation] /= (
-                        self.amount_of_games_per_generation[generation] / 100)
+                    self.amount_of_games_per_generation[generation] / 100)
             self.amount_start_defect_per_generation[generation] /= self.amount_of_games_per_generation[generation]
 
             self.amount_forgiveness_per_generation[generation] /= self.amount_of_games_per_generation[generation]
@@ -186,7 +204,7 @@ def evaluate_genomes(genomes, config):
         genome.amount_of_games = 0
 
     # Create a list of all genome pairs to be evaluated
-    genome_pairs = create_genome_pairs(genomes)
+    genome_pairs = create_genome_pairs_predefined_strategies(genomes)
 
     async_results = [pool.apply_async(play_game, (g1, g2)) for g1, g2 in genome_pairs]
     for result in async_results:
@@ -199,14 +217,22 @@ def evaluate_genomes(genomes, config):
         if genome2_id != -1:
             genome_dict[genome2_id].fitness += score2
             genome_dict[genome2_id].amount_of_games += 1
+        else:
+            # count the games where the opponent is a predefined strategy 20 times, so it counts as 20% of the games
+            genome_dict[genome1_id].fitness += (score1 * 20)
+            genome_dict[genome1_id].amount_of_games += 20
+
         statistics.add_stats(generation, game_stats)
 
     total_complexity = 0
+    total_fitness = 0
 
     for genome_id, genome in genomes:
         genome.fitness /= genome.amount_of_games  # Average fitness squared
+        total_fitness += genome.fitness
         total_complexity += genome.size()[0] * genome.size()[1]
     statistics.add_average_complexity(generation, total_complexity / len(genomes))
+    statistics.add_average_fitness(generation, total_fitness / len(genomes))
 
     generation += 1
 
@@ -229,19 +255,16 @@ def create_genome_pairs_predefined_strategies(genomes):
         # opponents = random.sample(genomes, subset_size)
         for genome_id2, genome2 in genomes[idx + 1:]:
             genome_pairs.append((
-                Genome(genome1, config), Genome(genome2, config)
+                Genome(genome1, config, genome_id1), Genome(genome2, config, genome_id2)
             ))
-        # for i in range(30):
-        #     genome_pairs.append((
-        #         Genome(genome1, config), CooperateUntilThreeDefections()))
-        for i in range(30):
-            genome_pairs.append((
-                Genome(genome1, config), AlwaysDefect()))
-
+        genome_pairs.append((
+            Genome(genome1, config, genome_id1), AlwaysDefect()))
+        genome_pairs.append((
+            Genome(genome1, config, genome_id1), TitForTat()))
     return genome_pairs
 
 
-def plot_combined(both_cooperate, niceness, complexities, forgiveness, window):
+def plot_combined(both_cooperate, niceness, complexities, forgiveness, fitness, window):
     generations = list(both_cooperate.keys())
 
     # Convert values to pandas Series to calculate the rolling mean
@@ -249,6 +272,7 @@ def plot_combined(both_cooperate, niceness, complexities, forgiveness, window):
     niceness_series = pd.Series(list(niceness.values())).rolling(window=window).mean()
     complexities_series = pd.Series(list(complexities.values())).rolling(window=window).mean()
     forgiveness_series = pd.Series(list(forgiveness.values())).rolling(window=window).mean()
+    fitness_series = pd.Series(list(fitness.values())).rolling(window=window).mean()
 
     # Create the first y-axis
     fig, ax1 = plt.subplots(figsize=(10, 5))
@@ -285,6 +309,17 @@ def plot_combined(both_cooperate, niceness, complexities, forgiveness, window):
     ax4.set_ylabel('Average Forgiveness moves per game', color='y', fontsize=20)
     ax4.tick_params(axis='y', labelcolor='y', labelsize=16)
 
+    # Create a fourth y-axis for average forgiveness
+    ax5 = ax1.twinx()
+    ax5.spines['left'].set_position(('outward', 120))  # Move the fourth y-axis further outward
+    ax5.plot(generations, list(fitness_series), linestyle='-', color='purple',
+             label='Average Fitness')
+    ax5.set_ylabel('Average Fitness', color='purple', fontsize=20)
+    # put the y-axis on the left side
+    ax5.yaxis.set_label_position('left')
+    ax5.yaxis.tick_left()
+    ax5.tick_params(axis='y', labelcolor='purple', labelsize=16)
+
     # Set x-ticks
     ax1.set_xticks([gen for gen in generations if gen % 200 == 0])
     ax1.tick_params(axis='x', labelsize=16)
@@ -296,32 +331,27 @@ def plot_combined(both_cooperate, niceness, complexities, forgiveness, window):
     plt.show()
 
 
-
 if __name__ == '__main__':
-    # Load the NEAT config file
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config-rnn')
     config = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
                          neat.DefaultSpeciesSet, neat.DefaultStagnation,
                          config_path)
-
     population = neat.Population(config)
+
+    # population = neat.checkpoint.Checkpointer.restore_checkpoint("neat-checkpoint-1999")
+
+    pool = mp.Pool(mp.cpu_count())
+
     population.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     population.add_reporter(stats)
 
-    # Define the folder for checkpoints
-    checkpoint_folder = "checkpoints"
-    os.makedirs(checkpoint_folder, exist_ok=True)  # Create the folder if it doesn't exist
+    population.add_reporter(neat.Checkpointer(generation_interval=500, time_interval_seconds=None,
+                                              filename_prefix='generation-'))
 
-    # Initialize the Checkpointer with your desired settings
-    checkpoint_interval = 10  # Save every 10 generations (adjust as needed)
-    checkpoint_prefix = os.path.join(checkpoint_folder, "neat-checkpoint-")
-
-    population.add_reporter(neat.Checkpointer(generation_interval=500, time_interval_seconds=None, filename_prefix=checkpoint_folder))
-    pool = mp.Pool(mp.cpu_count())
-
-    num_generations = 5000
+    config = population.config
+    num_generations = 2000
 
     winner = population.run(evaluate_genomes, num_generations)
 
@@ -329,7 +359,8 @@ if __name__ == '__main__':
 
     plot_combined(statistics.amount_both_cooperate_per_generation, statistics.amount_start_cooperate_per_generation,
                   statistics.average_complexity_per_generation, statistics.amount_forgiveness_per_generation,
-                  min(1, round(num_generations / 20)))
+                  statistics.average_fitness_per_generation,
+                  max(1, round(num_generations / 20)))
 
     with open("WinnerGenome", 'wb') as f:
         # Save the genome and neural network state

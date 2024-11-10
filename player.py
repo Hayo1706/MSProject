@@ -88,7 +88,7 @@ class LastWinner(Player):
     def __init__(self):
         super().__init__("Last Winner")
         # Load the winner genome from the file and create a neural network
-        with open("WinnerGenome", 'rb') as f:
+        with open("Defect-WinnerGenome", 'rb') as f:
             self.genome = pickle.load(f)
 
         # Load the NEAT config file
@@ -115,8 +115,8 @@ class LastPopulation(Player):
     def __init__(self):
         super().__init__("Last Population")
         # Load the specified population from the file and create a neural network
-        p = neat.Checkpointer.restore_checkpoint("neat-checkpoint-999")
-        genome = self.get_random_genome(p, 2)
+        p = neat.Checkpointer.restore_checkpoint("defect-chance-generations1999")
+        genome = self.get_random_genome(p, 10)
 
         self.net = neat.nn.FeedForwardNetwork.create(genome, p.config)
 
@@ -132,12 +132,16 @@ class LastPopulation(Player):
         return move
 
     def get_random_genome(self, population, genome_index):
-        return random.choice(list(population.population.values()))
+        #sort the genomes by fitness
+        sorted_species = sorted(population.species.species.values(), key=lambda x: x.fitness, reverse=True)
+
+        members = sorted_species[genome_index].members.values()
+        return list(members)[0]
 
 
 def create_input(oppHistory2, ownHistory2, own_score, opponent_score):
     ownHistory, oppHistory = ownHistory2[-20:], oppHistory2[-20:]
-
+    print(ownHistory, oppHistory)
     input_CD = [
         (1 if own == "C" else -1 if own == "D" else 0,
          1 if opp == "C" else -1 if opp == "D" else 0)
